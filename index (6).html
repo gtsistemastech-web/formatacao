@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Formatador de Texto para o Gmail</title>
+  <link rel="stylesheet" href="styles.css">
+  <!-- Ícones do Google Fonts / Material Symbols -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+</head>
+<body>
+
+  <!-- CABEÇALHO -->
+  <header>
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-icon">
+          <span class="material-symbols-outlined">mail</span>
+        </div>
+        <div class="brand-text">
+          <h1>FormatMail <span class="brand-badge">Pronto p/ Gmail</span></h1>
+          <p>Transforme qualquer texto desestruturado no modelo exato para o corpo do Gmail</p>
+        </div>
+      </div>
+
+      <div class="nav-actions">
+        <div class="tabs">
+          <button id="tabFormatBtn" class="tab-btn active" onclick="switchTab('format')">
+            <span class="material-symbols-outlined" style="font-size: 18px;">content_paste_go</span> Formatar & Copiar
+          </button>
+          <button id="tabManageBtn" class="tab-btn" onclick="switchTab('manage')">
+            <span class="material-symbols-outlined" style="font-size: 18px;">dashboard_customize</span> Gerenciar Modelos
+          </button>
+        </div>
+
+        <button class="btn btn-outline btn-sm" onclick="exportData()" title="Fazer backup dos modelos em arquivo JSON">
+          <span class="material-symbols-outlined" style="font-size: 16px;">download</span> Exportar
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="triggerImport()" title="Importar modelos de um arquivo JSON">
+          <span class="material-symbols-outlined" style="font-size: 16px;">upload</span> Importar
+        </button>
+        <input type="file" id="importFileInput" accept=".json" style="display:none" onchange="importData(event)">
+      </div>
+    </div>
+  </header>
+
+  <!-- CONTEÚDO PRINCIPAL -->
+  <main>
+
+    <!-- ABA 1: FORMATAR & COPIAR -->
+    <section id="viewFormat">
+      <!-- Barra do Modelo Selecionado -->
+      <div class="template-bar">
+        <label for="templateSelect">
+          <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; color: var(--primary);">tune</span>
+          Modelo Programado:
+        </label>
+        <select id="templateSelect" class="template-select" onchange="onTemplateChange()">
+          <!-- Preenchido via JavaScript -->
+        </select>
+        <button class="btn btn-outline btn-sm" onclick="editCurrentTemplate()">
+          <span class="material-symbols-outlined" style="font-size: 16px;">edit</span> Personalizar este Modelo
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="createNewTemplateFromCurrent()">
+          <span class="material-symbols-outlined" style="font-size: 16px;">add</span> Novo Modelo
+        </button>
+      </div>
+
+      <div class="content-grid">
+        <!-- COLUNA ESQUERDA: ENTRADA DE TEXTO E CAMPOS -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="material-symbols-outlined" style="color: var(--primary);">edit_note</span>
+              1. Cole o Texto Bruto
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <button class="btn btn-ghost btn-sm" onclick="loadSampleText()" title="Preencher com um exemplo de texto">
+                <span class="material-symbols-outlined" style="font-size: 16px;">auto_fix_high</span> Exemplo
+              </button>
+              <button class="btn btn-ghost btn-sm" onclick="clearInputText()" title="Limpar todo o texto">
+                <span class="material-symbols-outlined" style="font-size: 16px;">delete_outline</span> Limpar
+              </button>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <div class="input-group">
+              <span class="input-label">
+                Cole de qualquer lugar (WhatsApp, processo, planilha, anotações):
+              </span>
+              <textarea 
+                id="rawTextInput" 
+                class="textarea-raw" 
+                placeholder="Cole de qualquer jeito. Exemplo:&#10;&#10;A Sua Excelência a Senhora&#10;ANAUARA CUNHA RODRIGUES&#10;Gestora master da UPJ das Varas Cíveis da Comarca de Rio Verde&#10;Rio Verde - GO&#10;&#10;Assunto: Agradecimento – Sugestão de aprimoramento da Plataforma AGAIA.&#10;&#10;Senhora Gestora,&#10;...&#10;&#10;O sistema detecta tudo automaticamente e monta no modelo oficial!"
+                oninput="onRawInputChanged()"
+                onpaste="setTimeout(onRawInputChanged, 50)"
+              ></textarea>
+              <button type="button" class="btn btn-primary" onclick="executeFormatting()" style="margin-top: 8px; width: 100%; font-weight: 700; padding: 11px; font-size: 14px; box-shadow: 0 2px 6px rgba(26,115,232,0.25);">
+                <span class="material-symbols-outlined" style="font-size: 20px;">bolt</span>
+                ⚡ FORMATAR TEXTO AGORA
+              </button>
+            </div>
+
+            <!-- Campos Variáveis Detectados -->
+            <div class="variables-container">
+              <div class="variables-header">
+                <div class="variables-title">
+                  <span class="material-symbols-outlined" style="font-size: 18px; color: var(--primary);">variables</span>
+                  Variáveis do Modelo
+                </div>
+                <span id="varsCountBadge" class="brand-badge">0 campos</span>
+              </div>
+              <p style="font-size: 12px; color: var(--gray-500); margin-bottom: 12px;">
+                Os valores abaixo foram extraídos do texto ou podem ser digitados/alterados diretamente:
+              </p>
+              <div id="variablesFieldsGrid" class="variables-grid">
+                <!-- Preenchido dinamicamente -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- COLUNA DIREITA: PREVIEW DO GMAIL & BOTÃO DE CÓPIA -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="material-symbols-outlined" style="color: var(--success);">mark_email_read</span>
+              2. Pré-visualização & Cópia para o Gmail
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-outline btn-sm" onclick="copySubjectToClipboard()" title="Copiar apenas a linha de assunto do e-mail">
+                <span class="material-symbols-outlined" style="font-size: 16px;">content_copy</span> Copiar Assunto
+              </button>
+              <button class="btn btn-outline btn-sm" onclick="openDirectlyInGmail()" title="Abrir janela de composição no Gmail com o texto pronto">
+                <span class="material-symbols-outlined" style="font-size: 16px;">open_in_new</span> Abrir no Gmail
+              </button>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <!-- Botão Gigante de Cópia -->
+            <button class="btn btn-success btn-lg" onclick="copyFormattedBodyToClipboard()" style="width: 100%; font-size: 16px; font-weight: 700; padding: 14px 20px; box-shadow: 0 4px 10px rgba(30,142,62,0.25);">
+              <span class="material-symbols-outlined" style="font-size: 24px;">content_copy</span>
+              COPIAR FORMATADO PARA O GMAIL (Ctrl + C)
+            </button>
+            <p style="font-size: 12px; color: var(--gray-700); text-align: center; margin-top: -6px; font-weight: 500;">
+              ✨ Fonte <b>Verdana</b> | <b>Nome do endereçamento</b> e <b>assunto</b> em negrito | Texto do ofício <b>justificado</b> | Pronto para colar no Gmail.
+            </p>
+
+            <!-- Moldura Estilo Gmail -->
+            <div class="gmail-preview-container">
+              <div class="gmail-header-bar">
+                <div class="gmail-meta-row">
+                  <span class="gmail-meta-label">Para:</span>
+                  <span id="previewRecipient" class="gmail-meta-value" style="color: var(--gray-500); font-weight: normal;">(Definido no Gmail ou no modelo)</span>
+                </div>
+                <div class="gmail-meta-row">
+                  <span class="gmail-meta-label">Assunto:</span>
+                  <span id="previewSubject" class="gmail-meta-value">-</span>
+                </div>
+              </div>
+
+              <!-- Corpo do Gmail editável na pré-visualização -->
+              <div id="gmailPreviewBody" class="gmail-body-area" contenteditable="true" oninput="onPreviewBodyEdited()" title="Você também pode editar diretamente aqui antes de copiar!">
+                <!-- Conteúdo renderizado via JavaScript -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ABA 2: GERENCIAR & PROGRAMAR MODELOS -->
+    <section id="viewManage" style="display: none;">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="material-symbols-outlined" style="color: var(--primary);">settings_suggest</span>
+            Configuração e Programação de Modelos
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-outline btn-sm" onclick="resetDefaultTemplates()">
+              <span class="material-symbols-outlined" style="font-size: 16px;">restart_alt</span> Restaurar Modelos Padrão
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="createNewTemplate()">
+              <span class="material-symbols-outlined" style="font-size: 16px;">add</span> Criar Novo Modelo
+            </button>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <div class="template-manager">
+            <!-- Coluna de Seleção de Modelos -->
+            <div>
+              <h3 style="font-size: 13px; font-weight: 700; color: var(--gray-700); margin-bottom: 8px;">Seus Modelos Salvos:</h3>
+              <div id="templatesListContainer" class="template-list">
+                <!-- Preenchido via JavaScript -->
+              </div>
+            </div>
+
+            <!-- Coluna do Editor do Modelo -->
+            <div style="display: flex; flex-direction: column; gap: 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 id="editingModelTitle" style="font-size: 15px; font-weight: 700; color: var(--gray-800);">Editar Modelo</h3>
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn btn-outline btn-sm" onclick="duplicateCurrentTemplate()" title="Criar uma cópia deste modelo">
+                    <span class="material-symbols-outlined" style="font-size: 16px;">content_copy</span> Duplicar
+                  </button>
+                  <button class="btn btn-danger btn-sm" onclick="deleteCurrentTemplate()" title="Excluir este modelo">
+                    <span class="material-symbols-outlined" style="font-size: 16px;">delete</span> Excluir
+                  </button>
+                </div>
+              </div>
+
+              <!-- Metadados do Modelo -->
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="input-group">
+                  <label class="input-label" for="editTemplateName">Nome do Modelo:</label>
+                  <input type="text" id="editTemplateName" class="var-input" placeholder="Ex: Comunicação Processual">
+                </div>
+                <div class="input-group">
+                  <label class="input-label" for="editTemplateDesc">Descrição Rápida:</label>
+                  <input type="text" id="editTemplateDesc" class="var-input" placeholder="Ex: Para intimações de advogados">
+                </div>
+              </div>
+
+              <div class="input-group">
+                <label class="input-label" for="editTemplateSubject">
+                  Assunto Padrão para o Gmail (suporta variáveis como {processo}):
+                </label>
+                <input type="text" id="editTemplateSubject" class="var-input" placeholder="Ex: [TJGO] Notificação dos Autos nº {processo} - {nome}">
+              </div>
+
+              <!-- Tags de Variáveis Rápidas -->
+              <div style="background-color: var(--gray-50); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <span style="font-size: 12px; font-weight: 700; color: var(--gray-700);">
+                    Inserir Variáveis no Texto (clique para inserir na posição do cursor):
+                  </span>
+                  <div style="display: flex; gap: 6px;">
+                    <input type="text" id="newVarNameInput" placeholder="nome_campo" style="padding: 3px 8px; font-size: 12px; border: 1px solid var(--border); border-radius: 4px; width: 130px;">
+                    <button class="btn btn-outline btn-sm" style="padding: 3px 8px; font-size: 11px;" onclick="addCustomVariableTag()">+ Criar Tag</button>
+                  </div>
+                </div>
+                <div id="variableTagsContainer" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                  <!-- Tags dinâmicas -->
+                </div>
+              </div>
+
+              <!-- Barra de Ferramentas de Formatação Rica -->
+              <div class="input-group">
+                <label class="input-label">Corpo Programado do E-mail:</label>
+                
+                <div class="editor-toolbar">
+                  <button type="button" class="tool-btn" onclick="execEditorCmd('bold')" title="Negrito">
+                    <b>B</b>
+                  </button>
+                  <button type="button" class="tool-btn" onclick="execEditorCmd('italic')" title="Itálico">
+                    <i>I</i>
+                  </button>
+                  <button type="button" class="tool-btn" onclick="execEditorCmd('underline')" title="Sublinhado">
+                    <u>U</u>
+                  </button>
+                  <div class="tool-sep"></div>
+                  <button type="button" class="tool-btn" onclick="execEditorCmd('formatBlock', '<h3>')" title="Título">
+                    Título
+                  </button>
+                  <button type="button" class="tool-btn" onclick="execEditorCmd('formatBlock', '<p>')" title="Parágrafo Normal">
+                    Texto
+                  </button>
+                  <div class="tool-sep"></div>
+                  <button type="button" class="tool-btn" onclick="execEditorCmd('insertUnorderedList')" title="Lista com Marcadores">
+                    • Lista
+                  </button>
+                  <button type="button" class="tool-btn" onclick="execEditorCmd('insertOrderedList')" title="Lista Numerada">
+                    1. Numérica
+                  </button>
+                  <div class="tool-sep"></div>
+                  <button type="button" class="tool-btn" onclick="insertGmailQuoteBox()" title="Caixa de Destaque Azul (estilo Google)">
+                    🟦 Caixa Destaque
+                  </button>
+                  <button type="button" class="tool-btn" onclick="insertGmailAlertBox()" title="Caixa de Aviso Amarela">
+                    🟨 Caixa Alerta
+                  </button>
+                  <button type="button" class="tool-btn" onclick="insertGmailTable()" title="Tabela Estilizada">
+                    📊 Tabela
+                  </button>
+                  <button type="button" class="tool-btn" onclick="insertGmailSignature()" title="Bloco de Assinatura">
+                    ✍️ Assinatura
+                  </button>
+                </div>
+
+                <!-- Editor Visual do Modelo -->
+                <div id="templateBodyEditor" class="template-body-editor" contenteditable="true">
+                  <!-- Conteúdo HTML do Modelo -->
+                </div>
+              </div>
+
+              <!-- Regras Automáticas das Variáveis -->
+              <div style="background-color: var(--gray-50); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px;">
+                <div style="font-size: 13px; font-weight: 700; color: var(--gray-700); margin-bottom: 8px;">
+                  ⚙️ Regras de Limpeza / Formatação Automática por Campo:
+                </div>
+                <div id="varRulesContainer" style="display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+                  <!-- Regras dinâmicas para cada variável encontrada -->
+                </div>
+              </div>
+
+              <!-- Ações do Editor -->
+              <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px;">
+                <button class="btn btn-outline" onclick="switchTab('format')">Cancelar / Voltar</button>
+                <button class="btn btn-primary" onclick="saveCurrentTemplate()">
+                  <span class="material-symbols-outlined" style="font-size: 18px;">save</span> Salvar Alterações no Modelo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- TOAST CONTAINER -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- JAVASCRIPT -->
+  <script src="app.js"></script>
+</body>
+</html>
