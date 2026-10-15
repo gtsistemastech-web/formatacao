@@ -3,7 +3,7 @@ chcp 65001 >nul
 title Publicando FormatMail Pro no GitHub
 echo ====================================================
 echo   Publicando FormatMail Pro no GitHub
-echo   Repositorio: https://github.com/gutormin/formatacao
+echo   Repositorio: https://github.com/gtsistemastech-web/formatacao
 echo ====================================================
 echo.
 cd /d "%~dp0"
