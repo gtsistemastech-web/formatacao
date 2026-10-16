@@ -133,6 +133,17 @@ function isLocalidade(str) {
          /^\s*Nesta\s*$/i.test(str);
 }
 
+// Padrões de Fecho em Correspondências Oficiais (TJGO / Judiciário)
+const FECHO_PATTERNS = [
+  /^(?:Respeitosamente|Atenciosamente|Cordialmente|Saudações\s+cordiais|Com\s+(?:elevado\s+)?apreço|Com\s+(?:protestos\s+de\s+)?estima\s+e\s+consideração)[,]?$/i,
+  /^(?:Colho\s+(?:a\s+oportunidade|o\s+ensejo)|Aproveito\s+(?:a\s+oportunidade|o\s+ensejo)|Renovo\s+(?:a\s+Vossa|os\s+protestos)|Reitero\s+(?:a\s+Vossa|os\s+protestos)|Na\s+oportunidade,?\s*(?:renovo|reitero|apresento)|Sem\s+mais\s+(?:para\s+o\s+momento)?|Sendo\s+(?:o\s+que|apenas\s+o\s+que)\s+(?:se\s+apresenta|para\s+o\s+momento)|Certo\s+de\s+contar)/i
+];
+
+function isFechoLine(line) {
+  if (!line) return false;
+  return FECHO_PATTERNS.some(pat => pat.test(line.trim()));
+}
+
 // ========================================================
 // PARSER INTELIGENTE: EXTRAI APENAS O QUE FOI COLADO
 // NUNCA mistura campos de textos anteriores!
@@ -141,7 +152,19 @@ function parseDocumentText(rawText) {
   if (!rawText || !rawText.trim()) return {};
   
   const normalized = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const lines = normalized.split('\n').map(l => l.trim()).filter(Boolean);
+  const rawSplit = normalized.split('\n');
+  const lineObjs = [];
+  let hadBlank = false;
+  for (let i = 0; i < rawSplit.length; i++) {
+    const trimmed = rawSplit[i].trim();
+    if (!trimmed) {
+      hadBlank = true;
+    } else {
+      lineObjs.push({ text: trimmed, blankBefore: hadBlank });
+      hadBlank = false;
+    }
+  }
+  const lines = lineObjs.map(o => o.text);
   
   const result = {
     cabecalho_oficio: '',
@@ -180,7 +203,7 @@ function parseDocumentText(rawText) {
   // 3. Tratamento (A Sua Excelência...)
   let tratamentoIdx = -1;
   for (let i = currentIdx; i < lines.length; i++) {
-    if (/^(A Sua Excelência|A Sua Senhoria|Ao Senhor|À Senhora|A Sua Magnificência|Ilmo|Exmo)/i.test(lines[i])) {
+    if (/^(?:A[oàs]?\s+(?:Sua|Vossa)\s+(?:Excelência|Senhoria|Magnificência)|Aos?\s+Senhor(?:es)?|Às?\s+Senhora(?:s)?|Ilm[oa]s?|Exm[oa]s?|Às?\s+Excelentíssim[oa]s?|Aos?\s+Excelentíssim[oa]s?)/i.test(lines[i])) {
       tratamentoIdx = i;
       break;
     }
@@ -200,7 +223,7 @@ function parseDocumentText(rawText) {
   if (assuntoIdx !== -1) {
     for (let i = assuntoIdx + 1; i < lines.length; i++) {
       const l = lines[i];
-      if (l.endsWith(',') && (l.startsWith('Senhor') || l.startsWith('Prezado') || l.startsWith('Doutor') || l.startsWith('Juiz') || l.startsWith('Desembargador') || l.length <= 50)) {
+      if (l.endsWith(',') && (l.startsWith('Senhor') || l.startsWith('Prezado') || l.startsWith('Doutor') || l.startsWith('Juiz') || l.startsWith('Desembargador') || l.length <= 60)) {
         vocativoIdx = i;
         break;
       }
@@ -208,11 +231,14 @@ function parseDocumentText(rawText) {
   }
 
   // 6. Bloco de Endereçamento (Tratamento, Nome, Cargo, Cidade)
-  let endAddrIdx = lines.length;
+  let endAddrIdx = currentIdx;
   if (assuntoIdx !== -1) {
     endAddrIdx = assuntoIdx;
   } else if (vocativoIdx !== -1) {
     endAddrIdx = vocativoIdx;
+  } else if (tratamentoIdx !== -1) {
+    // Se há tratamento, mas não há assunto nem vocativo, o endereçamento tem no máximo 4 linhas
+    endAddrIdx = Math.min(lines.length, tratamentoIdx + 4);
   }
 
   if (tratamentoIdx !== -1) {
@@ -233,7 +259,7 @@ function parseDocumentText(rawText) {
         result.cargo_orgao = remaining.join('<br>');
       }
     }
-  } else if (endAddrIdx > currentIdx && assuntoIdx !== -1) {
+  } else if (assuntoIdx !== -1 && endAddrIdx > currentIdx) {
     const addrLines = lines.slice(currentIdx, endAddrIdx);
     result.nome_destinatario = addrLines[0];
     if (addrLines.length >= 2) {
@@ -261,53 +287,118 @@ function parseDocumentText(rawText) {
     result.vocativo_saudacao = lines[vocativoIdx];
   }
 
-  // 8. Assinatura e Fecho (SOMENTE SE HOUVER CORPO OU VOCATIVO)
-  // Nunca cria assinatura se o usuário apenas colou um cabeçalho/endereçamento!
-  if (vocativoIdx !== -1 || assuntoIdx !== -1) {
-    let assinaturaStartIdx = -1;
-    for (let i = lines.length - 1; i >= (vocativoIdx !== -1 ? vocativoIdx : endAddrIdx); i--) {
-      const l = lines[i];
-      if (/^(Desembargador|Juiz|Presidente|Secretári[ao]|Diretor|ANDRYA|LEANDRO)/i.test(l)) {
-        assinaturaStartIdx = i;
-      }
-    }
+  // 8. CORPO, FECHO E ASSINATURA
+  const bodyStartIdx = vocativoIdx !== -1 ? vocativoIdx + 1 : (assuntoIdx !== -1 ? assuntoIdx + 1 : endAddrIdx);
 
+  if (bodyStartIdx < lines.length) {
     let fechoIdx = -1;
-    const searchFechoEnd = assinaturaStartIdx !== -1 ? assinaturaStartIdx : lines.length;
-    for (let i = searchFechoEnd - 1; i >= (vocativoIdx !== -1 ? vocativoIdx : endAddrIdx); i--) {
-      const l = lines[i];
-      if (/^(Respeitosamente|Atenciosamente|Cordialmente)[,]?$/i.test(l) ||
-          /^Colho a oportunidade para/i.test(l)) {
+    let fechoEndIdx = -1;
+    let assinaturaStartIdx = -1;
+
+    // Procura fecho de trás para frente no documento
+    for (let i = lines.length - 1; i >= bodyStartIdx; i--) {
+      if (isFechoLine(lines[i])) {
         fechoIdx = i;
         break;
       }
     }
 
-    const bodyStartIdx = vocativoIdx !== -1 ? vocativoIdx + 1 : (assuntoIdx !== -1 ? assuntoIdx + 1 : endAddrIdx);
-    const bodyEndIdx = fechoIdx !== -1 ? fechoIdx : (assinaturaStartIdx !== -1 ? assinaturaStartIdx : lines.length);
-
-    if (bodyEndIdx > bodyStartIdx) {
-      const bodyLines = lines.slice(bodyStartIdx, bodyEndIdx);
-      let bodyText = bodyLines.join(' ');
-      bodyText = bodyText.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '<a href="mailto:$1" style="color: #1a73e8; text-decoration: underline; font-family: Verdana, Geneva, sans-serif;">$1</a>');
-      result.corpo_formatado_html = `<p style="margin: 0 0 14px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.6; color: #202124; text-align: justify; text-justify: inter-word;">${bodyText}</p>`;
-    }
-
     if (fechoIdx !== -1) {
-      if (assinaturaStartIdx !== -1 && assinaturaStartIdx > fechoIdx) {
-        result.fecho = lines.slice(fechoIdx, assinaturaStartIdx).join(' ');
-      } else {
-        result.fecho = lines[fechoIdx];
+      // Se encontrou fecho, determina onde termina o fecho
+      fechoEndIdx = fechoIdx + 1;
+      while (fechoEndIdx < lines.length) {
+        const nextL = lines[fechoEndIdx];
+        // Se a próxima linha parece ser nome de assinatura (curta, sem ponto final, cargo ou maiúsculas), para
+        if (fechoEndIdx > fechoIdx && (
+          /^(?:Desembargador|Juiz|Presidente|Diretor|Secretári|Doutor|Dr\.)/i.test(nextL) ||
+          /^[A-ZÁÀÂÃÉÈÊÍÏÓÒÔÕÚÜÇ\s.-]{4,}$/.test(nextL)
+        )) {
+          break;
+        }
+        fechoEndIdx++;
+        if (lines[fechoEndIdx - 1].endsWith('.')) {
+          break;
+        }
+      }
+
+      result.fecho = lines.slice(fechoIdx, fechoEndIdx).join(' ');
+
+      // Tudo após o fecho é a assinatura
+      if (fechoEndIdx < lines.length) {
+        assinaturaStartIdx = fechoEndIdx;
+      }
+    } else {
+      // Sem fecho explícito: procura assinatura apenas nas últimas linhas (máx 4 linhas finais)
+      const searchStart = Math.max(bodyStartIdx + 1, lines.length - 4);
+      for (let i = searchStart; i < lines.length; i++) {
+        const l = lines[i];
+        const isShort = l.length <= 60;
+        const noSentencePunct = !/[.!?;]$/.test(l);
+        const isTitleOrCaps = /^(?:Desembargador|Juiz|Presidente|Secretári[ao]|Diretor|Doutor[a]?|Dr[a]?\.)/i.test(l) ||
+                              /^[A-ZÁÀÂÃÉÈÊÍÏÓÒÔÕÚÜÇ\s.-]{4,}$/.test(l);
+        if (isShort && noSentencePunct && isTitleOrCaps) {
+          assinaturaStartIdx = i;
+          break;
+        }
       }
     }
 
-    if (assinaturaStartIdx !== -1) {
+    const bodyEndIdx = fechoIdx !== -1 ? fechoIdx : (assinaturaStartIdx !== -1 ? assinaturaStartIdx : lines.length);
+
+    // Constrói parágrafos do corpo justificados
+    if (bodyEndIdx > bodyStartIdx) {
+      const rawBodyLineObjs = lineObjs.slice(bodyStartIdx, bodyEndIdx);
+      const hasAnyBlank = rawBodyLineObjs.some((obj, idx) => idx > 0 && obj.blankBefore);
+
+      // Agrupa linhas em parágrafos reais, removendo quebras duras de linha
+      const paragraphs = [];
+      let currentPara = [];
+
+      for (let i = 0; i < rawBodyLineObjs.length; i++) {
+        const obj = rawBodyLineObjs[i];
+        const line = obj.text;
+
+        if (currentPara.length === 0) {
+          currentPara.push(line);
+        } else {
+          let isNewParaStart = false;
+          if (hasAnyBlank) {
+            // Se o usuário usou linhas em branco no corpo, respeita rigorosamente
+            isNewParaStart = obj.blankBefore;
+          } else {
+            // Se o texto veio sem linhas em branco (ex: colado de PDF/PJe compactado)
+            const prevLine = rawBodyLineObjs[i - 1].text;
+            const prevEndsSentence = /[.:!?]$/.test(prevLine);
+            isNewParaStart = prevEndsSentence && /^[A-ZÀ-Ú0-9(]/.test(line);
+          }
+
+          if (isNewParaStart) {
+            paragraphs.push(currentPara.join(' '));
+            currentPara = [line];
+          } else {
+            currentPara.push(line);
+          }
+        }
+      }
+      if (currentPara.length > 0) {
+        paragraphs.push(currentPara.join(' '));
+      }
+
+      const pTags = paragraphs.map(pText => {
+        let text = pText.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '<a href="mailto:$1" style="color: #1a73e8; text-decoration: underline; font-family: Verdana, Geneva, sans-serif;">$1</a>');
+        return `<p class="corpo-paragrafo justificado" style="margin: 0 0 14px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.6; color: #202124; text-align: justify; text-justify: inter-word;">${text}</p>`;
+      });
+
+      result.corpo_formatado_html = pTags.join('\n');
+    }
+
+    if (assinaturaStartIdx !== -1 && assinaturaStartIdx < lines.length) {
       const assLines = lines.slice(assinaturaStartIdx);
       const nomeAss = assLines[0];
       const cargoAss = assLines.slice(1).join('<br>');
-      result.assinatura_html = `<div style="margin-top: 22px; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.4; color: #202124;">
-  <p style="margin: 0 0 2px 0; font-family: Verdana, Geneva, sans-serif; font-weight: normal;">${escapeHtml(nomeAss)}</p>
-  ${cargoAss ? `<p style="margin: 0 0 2px 0; font-family: Verdana, Geneva, sans-serif; font-weight: normal;">${cargoAss}</p>` : ''}
+      result.assinatura_html = `<div style="margin-top: 22px; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.4; color: #202124; text-align: left;">
+  <p style="margin: 0 0 2px 0; font-family: Verdana, Geneva, sans-serif; font-weight: normal; text-align: left;">${escapeHtml(nomeAss)}</p>
+  ${cargoAss ? `<p style="margin: 0 0 2px 0; font-family: Verdana, Geneva, sans-serif; font-weight: normal; text-align: left;">${cargoAss}</p>` : ''}
 </div>`;
     }
   }
@@ -316,42 +407,40 @@ function parseDocumentText(rawText) {
 }
 
 // Constrói o HTML formatado limpo APENAS COM OS CAMPOS PRESENTES
-// Configuração solicitada: Fonte Verdana, Assunto todo em negrito e apenas o nome do endereçamento em negrito
+// Configuração solicitada: Fonte Verdana, Assunto todo em negrito, nome do endereçamento em negrito e corpo justificado
 function buildFormattedHtml(p) {
   let html = '';
 
   if (p.cabecalho_oficio) {
-    html += `<p style="margin: 0 0 2px 0; font-family: Verdana, Geneva, sans-serif; font-size: 12px; font-weight: normal; color: #5f6368;">${escapeHtml(p.cabecalho_oficio)}</p>\n`;
+    html += `<p style="margin: 0 0 2px 0; font-family: Verdana, Geneva, sans-serif; font-size: 12px; font-weight: normal; color: #5f6368; text-align: left;">${escapeHtml(p.cabecalho_oficio)}</p>\n`;
   }
   if (p.local_data) {
-    html += `<p style="margin: 0 0 16px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; font-weight: normal; color: #5f6368;">${escapeHtml(p.local_data)}</p>\n`;
+    html += `<p style="margin: 0 0 16px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; font-weight: normal; color: #5f6368; text-align: left;">${escapeHtml(p.local_data)}</p>\n`;
   }
   if (p.tratamento_inicio) {
-    html += `<p style="margin: 0 0 4px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; font-weight: normal; color: #202124;">${escapeHtml(p.tratamento_inicio)}</p>\n`;
+    html += `<p style="margin: 0 0 4px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; font-weight: normal; color: #202124; text-align: left;">${escapeHtml(p.tratamento_inicio)}</p>\n`;
   }
   if (p.nome_destinatario) {
-    // Apenas o nome do endereçamento em negrito
-    html += `<p style="margin: 0 0 4px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; color: #202124;"><strong>${escapeHtml(p.nome_destinatario)}</strong></p>\n`;
+    html += `<p style="margin: 0 0 4px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; color: #202124; text-align: left;"><strong>${escapeHtml(p.nome_destinatario)}</strong></p>\n`;
   }
   if (p.cargo_orgao) {
-    html += `<div style="margin: 0 0 4px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; font-weight: normal; color: #202124;">${p.cargo_orgao}</div>\n`;
+    html += `<div style="margin: 0 0 4px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; font-weight: normal; color: #202124; text-align: left;">${p.cargo_orgao}</div>\n`;
   }
   if (p.comarca_uf) {
-    html += `<p style="margin: 0 0 18px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; font-weight: normal; color: #202124;">${escapeHtml(p.comarca_uf)}</p>\n`;
+    html += `<p style="margin: 0 0 18px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; font-weight: normal; color: #202124; text-align: left;">${escapeHtml(p.comarca_uf)}</p>\n`;
   }
   if (p.assunto) {
-    // O assunto todo em negrito
     const cleanAssunto = p.assunto.replace(/^(?:Assunto|Tema|Objeto)\s*[:\-–—]\s*/i, '').trim();
-    html += `<p style="margin: 0 0 18px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; color: #202124;"><strong>Assunto: ${escapeHtml(cleanAssunto)}</strong></p>\n`;
+    html += `<p style="margin: 0 0 18px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; color: #202124; text-align: left;"><strong>Assunto: ${escapeHtml(cleanAssunto)}</strong></p>\n`;
   }
   if (p.vocativo_saudacao) {
-    html += `<p style="margin: 0 0 18px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; font-weight: normal; color: #202124;">${escapeHtml(p.vocativo_saudacao)}</p>\n`;
+    html += `<p style="margin: 0 0 18px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; font-weight: normal; color: #202124; text-align: left;">${escapeHtml(p.vocativo_saudacao)}</p>\n`;
   }
   if (p.corpo_formatado_html) {
     html += `<div style="margin: 0 0 18px 0;">${p.corpo_formatado_html}</div>\n`;
   }
   if (p.fecho) {
-    html += `<p style="margin: 0 0 18px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; font-weight: normal; color: #202124;">${escapeHtml(p.fecho)}</p>\n`;
+    html += `<p class="fecho-paragrafo justificado" style="margin: 0 0 18px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.6; font-weight: normal; color: #202124; text-align: justify; text-justify: inter-word;">${escapeHtml(p.fecho)}</p>\n`;
   }
   if (p.assinatura_html) {
     html += `${p.assinatura_html}\n`;

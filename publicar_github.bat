@@ -10,6 +10,10 @@ cd /d "%~dp0"
 echo Verificando arquivos...
 git status
 echo.
+echo Adicionando arquivos e criando commit...
+git add .
+git commit -m "Corrigir texto justificado, divisao de paragrafos e deteccao de assinatura"
+echo.
 echo Enviando para o GitHub (branch main)...
 git push -u origin main --force
 echo.

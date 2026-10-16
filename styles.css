@@ -482,6 +482,15 @@ main {
   background-color: #fafbfd;
 }
 
+.gmail-body-area p.justificado,
+.gmail-body-area .corpo-paragrafo,
+.gmail-body-area p.corpo-paragrafo,
+.gmail-body-area .fecho-paragrafo {
+  text-align: justify !important;
+  text-justify: inter-word !important;
+}
+
+
 /* Estilos de conteúdo interno do Gmail */
 .gmail-quote-box {
   background-color: #f1f3f4;
