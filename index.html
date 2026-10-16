@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Formatador de Texto para o Gmail</title>
-  <link rel="stylesheet" href="styles.css?v=5.1">
+  <link rel="stylesheet" href="styles.css?v=5.2">
   <!-- Ícones do Google Fonts / Material Symbols -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
 </head>
@@ -24,7 +24,12 @@
       </div>
 
       <div class="nav-actions">
-        <div class="tabs">
+        <!-- Status de Perfil ADM / Usuário -->
+        <div id="authStatusBox" style="display: flex; align-items: center; gap: 8px;">
+          <!-- Injetado dinamicamente via JS -->
+        </div>
+
+        <div class="tabs admin-only">
           <button id="tabFormatBtn" class="tab-btn active" onclick="switchTab('format')">
             <span class="material-symbols-outlined" style="font-size: 18px;">content_paste_go</span> Formatar & Copiar
           </button>
@@ -33,10 +38,10 @@
           </button>
         </div>
 
-        <button class="btn btn-outline btn-sm" onclick="exportData()" title="Fazer backup dos modelos em arquivo JSON">
+        <button class="btn btn-outline btn-sm admin-only" onclick="exportData()" title="Fazer backup dos modelos em arquivo JSON">
           <span class="material-symbols-outlined" style="font-size: 16px;">download</span> Exportar
         </button>
-        <button class="btn btn-outline btn-sm" onclick="triggerImport()" title="Importar modelos de um arquivo JSON">
+        <button class="btn btn-outline btn-sm admin-only" onclick="triggerImport()" title="Importar modelos de um arquivo JSON">
           <span class="material-symbols-outlined" style="font-size: 16px;">upload</span> Importar
         </button>
         <input type="file" id="importFileInput" accept=".json" style="display:none" onchange="importData(event)">
@@ -58,10 +63,10 @@
         <select id="templateSelect" class="template-select" onchange="onTemplateChange()">
           <!-- Preenchido via JavaScript -->
         </select>
-        <button class="btn btn-outline btn-sm" onclick="editCurrentTemplate()">
+        <button class="btn btn-outline btn-sm admin-only" onclick="editCurrentTemplate()">
           <span class="material-symbols-outlined" style="font-size: 16px;">edit</span> Personalizar este Modelo
         </button>
-        <button class="btn btn-primary btn-sm" onclick="createNewTemplateFromCurrent()">
+        <button class="btn btn-primary btn-sm admin-only" onclick="createNewTemplateFromCurrent()">
           <span class="material-symbols-outlined" style="font-size: 16px;">add</span> Novo Modelo
         </button>
       </div>
@@ -102,8 +107,8 @@
               </button>
             </div>
 
-            <!-- Campos Variáveis Detectados -->
-            <div class="variables-container">
+            <!-- Campos Variáveis Detectados (Apenas ADM pode alterar manualmente) -->
+            <div class="variables-container admin-only">
               <div class="variables-header">
                 <div class="variables-title">
                   <span class="material-symbols-outlined" style="font-size: 18px; color: var(--primary);">variables</span>
@@ -322,10 +327,87 @@
 
   </main>
 
+  <!-- MODAL DE ACESSO ADM -->
+  <div id="adminAuthModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 440px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; color: var(--gray-800);">
+          <span class="material-symbols-outlined" style="color: var(--primary);">admin_panel_settings</span>
+          Acesso de Administrador
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="closeAdminModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <p style="font-size: 13px; color: var(--gray-700); margin-bottom: 12px; line-height: 1.5;">
+          Digite a senha de administrador para liberar a edição de modelos, personalização e variáveis:
+        </p>
+        <div class="input-group">
+          <input 
+            type="password" 
+            id="adminPasswordInput" 
+            class="var-input" 
+            placeholder="Senha do ADM (Padrão: admin123)" 
+            style="width: 100%;" 
+            onkeydown="if(event.key==='Enter') verifyAdminPassword()"
+          >
+        </div>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--gray-700); cursor: pointer; margin-top: 10px;">
+          <input type="checkbox" id="rememberAdminCheckbox">
+          Manter conectado como Administrador neste navegador
+        </label>
+        <div id="adminAuthError" style="color: var(--danger); font-size: 12px; margin-top: 8px; display: none; font-weight: 600;">
+          ⚠️ Senha incorreta. Tente novamente.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline btn-sm" onclick="closeAdminModal()">Cancelar</button>
+        <button class="btn btn-primary btn-sm" onclick="verifyAdminPassword()">
+          <span class="material-symbols-outlined" style="font-size: 16px;">lock_open</span>
+          Entrar como ADM
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL ALTERAR SENHA ADM -->
+  <div id="changePwdModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 440px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; color: var(--gray-800);">
+          <span class="material-symbols-outlined" style="color: var(--primary);">password</span>
+          Alterar Senha do Administrador
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="closeChangePwdModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <div class="input-group" style="margin-bottom: 12px;">
+          <label class="input-label" for="currentAdminPwd">Senha Atual:</label>
+          <input type="password" id="currentAdminPwd" class="var-input" placeholder="Digite a senha atual" style="width: 100%;">
+        </div>
+        <div class="input-group" style="margin-bottom: 12px;">
+          <label class="input-label" for="newAdminPwd">Nova Senha:</label>
+          <input type="password" id="newAdminPwd" class="var-input" placeholder="Digite a nova senha (mínimo 4 caracteres)" style="width: 100%;">
+        </div>
+        <div class="input-group">
+          <label class="input-label" for="confirmAdminPwd">Confirme a Nova Senha:</label>
+          <input type="password" id="confirmAdminPwd" class="var-input" placeholder="Repita a nova senha" style="width: 100%;" onkeydown="if(event.key==='Enter') saveNewAdminPassword()">
+        </div>
+        <div id="changePwdError" style="color: var(--danger); font-size: 12px; margin-top: 8px; display: none; font-weight: 600;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline btn-sm" onclick="closeChangePwdModal()">Cancelar</button>
+        <button class="btn btn-primary btn-sm" onclick="saveNewAdminPassword()">
+          <span class="material-symbols-outlined" style="font-size: 16px;">save</span>
+          Salvar Nova Senha
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- TOAST CONTAINER -->
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- JAVASCRIPT -->
-  <script src="app.js?v=5.1"></script>
+  <script src="app.js?v=5.2"></script>
 </body>
 </html>

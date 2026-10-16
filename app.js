@@ -3,10 +3,14 @@
  * Especializado no Padrão de Comunicação e Ofícios do TJGO
  */
 
-// Chaves de armazenamento local (versão 5: renderização dinâmica sem mistura de texto anterior)
+// Chaves de armazenamento local
 const STORAGE_KEY_TEMPLATES = 'formatmail_templates_v5';
 const STORAGE_KEY_ACTIVE_TEMPLATE = 'formatmail_active_template_id_v5';
 const STORAGE_KEY_LAST_RAW = 'formatmail_last_raw_text';
+const STORAGE_KEY_ADMIN_PWD = 'formatmail_admin_password';
+const DEFAULT_ADMIN_PWD = 'admin123';
+const STORAGE_KEY_REMEMBER_ADMIN = 'formatmail_remember_admin';
+const SESSION_KEY_IS_ADMIN = 'formatmail_session_is_admin';
 
 // Modelos padrão pré-configurados
 const DEFAULT_TEMPLATES = [
@@ -25,9 +29,11 @@ let templates = [];
 let activeTemplateId = null;
 let currentValues = {};
 let editingTemplate = null;
+let isAdmin = false;
 
 // Inicialização
 document.addEventListener('DOMContentLoaded', () => {
+  initAdminAuth();
   loadTemplates();
   initActiveTemplate();
   renderTemplateSelector();
@@ -79,6 +85,11 @@ function getActiveTemplate() {
 }
 
 function switchTab(tab) {
+  if (tab === 'manage' && !isAdmin) {
+    openAdminModal();
+    return;
+  }
+
   const viewFormat = document.getElementById('viewFormat');
   const viewManage = document.getElementById('viewManage');
   const btnFormat = document.getElementById('tabFormatBtn');
@@ -767,6 +778,10 @@ function resetDefaultTemplates() {
 
 // Backup JSON
 function exportData() {
+  if (!isAdmin) {
+    openAdminModal();
+    return;
+  }
   const data = {
     version: '5.0',
     exportDate: new Date().toISOString(),
@@ -783,6 +798,10 @@ function exportData() {
 }
 
 function triggerImport() {
+  if (!isAdmin) {
+    openAdminModal();
+    return;
+  }
   document.getElementById('importFileInput').click();
 }
 
@@ -859,10 +878,18 @@ function onPreviewBodyEdited() {
 }
 
 function editCurrentTemplate() {
+  if (!isAdmin) {
+    openAdminModal();
+    return;
+  }
   switchTab('manage');
 }
 
 function createNewTemplateFromCurrent() {
+  if (!isAdmin) {
+    openAdminModal();
+    return;
+  }
   switchTab('manage');
   createNewTemplate();
 }
@@ -964,3 +991,204 @@ function addCustomVariableTag() {
   document.execCommand('insertText', false, `{${name}}`);
   input.value = '';
 }
+
+// ========================================================
+// CONTROLE DE ACESSO: MODOS USUÁRIO (OPERADOR) E ADM
+// ========================================================
+function initAdminAuth() {
+  const remembered = localStorage.getItem(STORAGE_KEY_REMEMBER_ADMIN) === 'true';
+  const sessionActive = sessionStorage.getItem(SESSION_KEY_IS_ADMIN) === 'true';
+
+  if (remembered || sessionActive) {
+    isAdmin = true;
+  } else {
+    isAdmin = false;
+  }
+
+  // Se a URL contiver ?admin ou ?adm, abre o modal de acesso se não estiver logado
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('admin') || urlParams.has('adm')) {
+      if (!isAdmin) {
+        setTimeout(() => openAdminModal(), 300);
+      }
+    }
+  } catch (e) {
+    console.warn('Erro ao ler URL params:', e);
+  }
+
+  updateAuthUI();
+}
+
+function updateAuthUI() {
+  document.body.classList.toggle('is-admin', isAdmin);
+
+  const previewBody = document.getElementById('gmailPreviewBody');
+  if (previewBody) {
+    if (isAdmin) {
+      previewBody.setAttribute('contenteditable', 'true');
+      previewBody.setAttribute('title', 'Você também pode editar diretamente aqui antes de copiar!');
+    } else {
+      previewBody.setAttribute('contenteditable', 'false');
+      previewBody.setAttribute('title', 'Pré-visualização pronta para copiar no Gmail (somente leitura)');
+    }
+  }
+
+  // Se não for admin e estiver na tela de gerenciamento, volta para o formatador
+  if (!isAdmin) {
+    const viewManage = document.getElementById('viewManage');
+    if (viewManage && viewManage.style.display !== 'none') {
+      switchTab('format');
+    }
+  }
+
+  renderAuthStatusBox();
+}
+
+function renderAuthStatusBox() {
+  const box = document.getElementById('authStatusBox');
+  if (!box) return;
+
+  if (isAdmin) {
+    box.innerHTML = `
+      <span class="auth-badge admin" title="Você está autenticado no Modo Administrador">
+        <span class="material-symbols-outlined" style="font-size: 14px;">admin_panel_settings</span>
+        ADM
+      </span>
+      <button class="btn btn-outline btn-sm" onclick="openChangePwdModal()" title="Alterar senha do administrador">
+        <span class="material-symbols-outlined" style="font-size: 16px;">key</span>
+        Senha
+      </button>
+      <button class="btn btn-ghost btn-sm" onclick="logoutAdmin()" title="Sair do modo administrador e voltar ao modo usuário seguro">
+        <span class="material-symbols-outlined" style="font-size: 16px;">logout</span>
+        Sair
+      </button>
+    `;
+  } else {
+    box.innerHTML = `
+      <span class="auth-badge user" title="Modo Operador: apenas colar e copiar sem alterar configurações">
+        <span class="material-symbols-outlined" style="font-size: 14px;">person</span>
+        Usuário
+      </span>
+      <button class="btn btn-outline btn-sm" onclick="openAdminModal()" title="Acessar Modo Administrador (configurar modelos e variáveis)">
+        <span class="material-symbols-outlined" style="font-size: 16px;">lock</span>
+        Acesso ADM
+      </button>
+    `;
+  }
+}
+
+function openAdminModal() {
+  const modal = document.getElementById('adminAuthModal');
+  const input = document.getElementById('adminPasswordInput');
+  const err = document.getElementById('adminAuthError');
+  const remember = document.getElementById('rememberAdminCheckbox');
+
+  if (modal) {
+    modal.style.display = 'flex';
+    if (input) {
+      input.value = '';
+      setTimeout(() => input.focus(), 150);
+    }
+    if (err) err.style.display = 'none';
+    if (remember) remember.checked = false;
+  }
+}
+
+function closeAdminModal() {
+  const modal = document.getElementById('adminAuthModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function verifyAdminPassword() {
+  const input = document.getElementById('adminPasswordInput');
+  const err = document.getElementById('adminAuthError');
+  const remember = document.getElementById('rememberAdminCheckbox');
+  const entered = (input ? input.value : '').trim();
+
+  const correctPwd = localStorage.getItem(STORAGE_KEY_ADMIN_PWD) || DEFAULT_ADMIN_PWD;
+
+  if (entered === correctPwd) {
+    isAdmin = true;
+    sessionStorage.setItem(SESSION_KEY_IS_ADMIN, 'true');
+    if (remember && remember.checked) {
+      localStorage.setItem(STORAGE_KEY_REMEMBER_ADMIN, 'true');
+    }
+    closeAdminModal();
+    updateAuthUI();
+    showToast('🔓 Modo Administrador ativado com sucesso!', 'success');
+  } else {
+    if (err) {
+      err.style.display = 'block';
+      if (input) input.select();
+    }
+  }
+}
+
+function logoutAdmin() {
+  isAdmin = false;
+  localStorage.removeItem(STORAGE_KEY_REMEMBER_ADMIN);
+  sessionStorage.removeItem(SESSION_KEY_IS_ADMIN);
+  updateAuthUI();
+  showToast('🔒 Modo Usuário ativo. Alterações bloqueadas.', 'info');
+}
+
+function openChangePwdModal() {
+  const modal = document.getElementById('changePwdModal');
+  const cur = document.getElementById('currentAdminPwd');
+  const newP = document.getElementById('newAdminPwd');
+  const conf = document.getElementById('confirmAdminPwd');
+  const err = document.getElementById('changePwdError');
+
+  if (modal) {
+    modal.style.display = 'flex';
+    if (cur) cur.value = '';
+    if (newP) newP.value = '';
+    if (conf) conf.value = '';
+    if (err) err.style.display = 'none';
+    setTimeout(() => { if (cur) cur.focus(); }, 150);
+  }
+}
+
+function closeChangePwdModal() {
+  const modal = document.getElementById('changePwdModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function saveNewAdminPassword() {
+  const cur = (document.getElementById('currentAdminPwd')?.value || '').trim();
+  const newP = (document.getElementById('newAdminPwd')?.value || '').trim();
+  const conf = (document.getElementById('confirmAdminPwd')?.value || '').trim();
+  const err = document.getElementById('changePwdError');
+
+  const currentStored = localStorage.getItem(STORAGE_KEY_ADMIN_PWD) || DEFAULT_ADMIN_PWD;
+
+  if (cur !== currentStored) {
+    if (err) {
+      err.textContent = '⚠️ Senha atual incorreta.';
+      err.style.display = 'block';
+    }
+    return;
+  }
+
+  if (newP.length < 4) {
+    if (err) {
+      err.textContent = '⚠️ A nova senha deve ter pelo menos 4 caracteres.';
+      err.style.display = 'block';
+    }
+    return;
+  }
+
+  if (newP !== conf) {
+    if (err) {
+      err.textContent = '⚠️ A confirmação não confere com a nova senha.';
+      err.style.display = 'block';
+    }
+    return;
+  }
+
+  localStorage.setItem(STORAGE_KEY_ADMIN_PWD, newP);
+  closeChangePwdModal();
+  showToast('✅ Nova senha do Administrador salva com sucesso!', 'success');
+}
+

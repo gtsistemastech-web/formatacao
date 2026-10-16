@@ -794,3 +794,41 @@ main {
   font-size: 11px;
   font-weight: 700;
 }
+
+/* Perfis de Acesso (ADM vs Usuário Operador) */
+body:not(.is-admin) .admin-only {
+  display: none !important;
+}
+
+body:not(.is-admin) .gmail-body-area {
+  cursor: default;
+}
+
+body.is-admin .user-only {
+  display: none !important;
+}
+
+.auth-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.auth-badge.user {
+  background-color: var(--gray-100);
+  color: var(--gray-700);
+  border: 1px solid var(--border);
+}
+
+.auth-badge.admin {
+  background-color: #fef7e0;
+  color: #b06000;
+  border: 1px solid rgba(249, 171, 0, 0.5);
+}
+
