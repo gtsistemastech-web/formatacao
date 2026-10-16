@@ -417,8 +417,28 @@ function parseDocumentText(rawText) {
   return result;
 }
 
+// Formata o nome do destinatário mantendo qualificações (Doutor, Desembargador, Juiz, etc.) em peso normal e apenas o nome em negrito
+function formatNomeDestinatarioHtml(rawName) {
+  if (!rawName) return '';
+  const trimmed = rawName.trim();
+
+  const qualifRegex = /^((?:(?:Professor(?:\(a\)|[as])?|Prof[a.]?|Doutor(?:\(a\)|[as])?|Dr(?:\(a\)|[as])?\.?|Desembargador(?:\(a\)|es|as?)?|Des[a.]?|Des\.ª|Ju[ií]z(?:\(a\)|es|as?)?(?:\s+de\s+Direito)?|Ministr[oa](?:\(a\)|s)?|Min\.|Conselheir[oa](?:\(a\)|s)?|Senhor(?:\(a\)|es|as?)?|Sr(?:\(a\)|[as])?\.?|Defensor(?:\(a\)|es|as?)?|Promotor(?:\(a\)|es|as?)?|Procurador(?:\(a\)|es|as?)?|Engenheir[oa](?:\(a\)|s)?|Eng\.|Auditor(?:\(a\)|[as])?|Corregedor(?:\(a\)|[as])?)\s+)+)(.+)$/i;
+
+  const match = trimmed.match(qualifRegex);
+  if (match) {
+    const qualif = match[1].trim();
+    const nome = match[2].trim();
+    // Se o restante for uma locução institucional como 'do Tribunal...', mantém tudo em negrito
+    if (!/^(?:do|da|dos|das|de)\b/i.test(nome)) {
+      return `${escapeHtml(qualif)} <strong>${escapeHtml(nome)}</strong>`;
+    }
+  }
+
+  return `<strong>${escapeHtml(trimmed)}</strong>`;
+}
+
 // Constrói o HTML formatado limpo APENAS COM OS CAMPOS PRESENTES
-// Configuração solicitada: Fonte Verdana, Assunto todo em negrito, nome do endereçamento em negrito e corpo justificado
+// Configuração solicitada: Fonte Verdana, Assunto todo em negrito, nome do destinatário (sem qualificação) em negrito e corpo justificado
 function buildFormattedHtml(p) {
   let html = '';
 
@@ -432,7 +452,7 @@ function buildFormattedHtml(p) {
     html += `<p style="margin: 0 0 4px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; font-weight: normal; color: #202124; text-align: left;">${escapeHtml(p.tratamento_inicio)}</p>\n`;
   }
   if (p.nome_destinatario) {
-    html += `<p style="margin: 0 0 4px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; color: #202124; text-align: left;"><strong>${escapeHtml(p.nome_destinatario)}</strong></p>\n`;
+    html += `<p style="margin: 0 0 4px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; color: #202124; text-align: left;">${formatNomeDestinatarioHtml(p.nome_destinatario)}</p>\n`;
   }
   if (p.cargo_orgao) {
     html += `<div style="margin: 0 0 4px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; font-weight: normal; color: #202124; text-align: left;">${p.cargo_orgao}</div>\n`;
