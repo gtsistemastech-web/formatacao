@@ -202,13 +202,14 @@ function parseDocumentText(rawText) {
   let currentIdx = 0;
 
   // 2. Número de Ofício e Data no início (se houver)
-  if (currentIdx < lines.length && /^(?:OFÍCIO|MEMORANDO|CIRCULAR|DESPACHO)\s+(?:N[º°o]?\.?\s*)?/i.test(lines[currentIdx])) {
-    result.cabecalho_oficio = lines[currentIdx];
-    currentIdx++;
-  }
-  if (currentIdx < lines.length && /^[A-Za-zÀ-ÿ\s]+,\s*\d{1,2}\s+de\s+[a-zç]+\s+de\s+\d{4}\.?/i.test(lines[currentIdx])) {
-    result.local_data = lines[currentIdx];
-    currentIdx++;
+  for (let step = 0; step < 2; step++) {
+    if (currentIdx < lines.length && !result.cabecalho_oficio && /^(?:OFÍCIO|MEMORANDO|CIRCULAR|DESPACHO)\s+(?:N[º°o]?\.?\s*)?/i.test(lines[currentIdx])) {
+      result.cabecalho_oficio = lines[currentIdx];
+      currentIdx++;
+    } else if (currentIdx < lines.length && !result.local_data && /^[A-Za-zÀ-ÿ\s]+,\s*\d{1,2}\s+de\s+[a-zç]+\s+de\s+\d{4}\.?/i.test(lines[currentIdx])) {
+      result.local_data = lines[currentIdx];
+      currentIdx++;
+    }
   }
 
   // 3. Tratamento (A Sua Excelência...)
@@ -443,11 +444,9 @@ function buildFormattedHtml(p) {
   let html = '';
 
   if (p.cabecalho_oficio) {
-    html += `<p style="margin: 0 0 2px 0; font-family: Verdana, Geneva, sans-serif; font-size: 12px; font-weight: normal; color: #5f6368; text-align: left;">${escapeHtml(p.cabecalho_oficio)}</p>\n`;
+    html += `<p style="margin: 0 0 16px 0; font-family: Verdana, Geneva, sans-serif; font-size: 12px; font-weight: normal; color: #5f6368; text-align: left;">${escapeHtml(p.cabecalho_oficio)}</p>\n`;
   }
-  if (p.local_data) {
-    html += `<p style="margin: 0 0 16px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; font-weight: normal; color: #5f6368; text-align: left;">${escapeHtml(p.local_data)}</p>\n`;
-  }
+  // Data (local e data) omitida no e-mail conforme padrão TJGO / solicitação do usuário
   if (p.tratamento_inicio) {
     html += `<p style="margin: 0 0 4px 0; font-family: Verdana, Geneva, sans-serif; font-size: 13px; line-height: 1.5; font-weight: normal; color: #202124; text-align: left;">${escapeHtml(p.tratamento_inicio)}</p>\n`;
   }
